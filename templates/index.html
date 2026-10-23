@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111520">
+  <meta name="description" content="FotoLab Studio: editor fotográfico con ajustes, recorte, cambio de tamaño, desenfoque, stickers y limpieza de metadatos.">
+  <title>FotoLab Studio · Editor de fotografías</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+<svg class="icon-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="ic-crop" viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14M2 6h14a2 2 0 0 1 2 2v14"/></symbol>
+  <symbol id="ic-resize" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m8 16 8-8M11 8h5v5M8 11v5h5"/></symbol>
+  <symbol id="ic-shield" viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3 9 8 11 5-2 8-6 8-11V5zM9 12l2 2 4-4"/></symbol>
+  <symbol id="ic-sticker" viewBox="0 0 24 24"><path d="M20 13V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h8zM20 13h-5a2 2 0 0 0-2 2v5"/><path d="m7 12 3-3 3 3M8 15h.01"/></symbol>
+  <symbol id="ic-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 16-5.5-5.5L5 21"/></symbol>
+  <symbol id="ic-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="ic-sliders" viewBox="0 0 24 24"><path d="M4 7h7m4 0h5M4 17h4m4 0h8"/><circle cx="13" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+  <symbol id="ic-blur" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M4.9 4.9h.01M12 2h.01M19.1 4.9h.01M22 12h.01M19.1 19.1h.01M12 22h.01M4.9 19.1h.01M2 12h.01" stroke-width="3"/></symbol>
+  <symbol id="ic-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 14c1 2 3 3 4 3s3-1 4-3M9 9h.01M15 9h.01" stroke-width="2.5"/></symbol>
+  <symbol id="ic-cursor" viewBox="0 0 24 24"><path d="m5 3 14 9-8 1-3 7z"/></symbol>
+  <symbol id="ic-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-2"/></symbol>
+  <symbol id="ic-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5m5 5H10a6 6 0 0 0 0 12h2"/></symbol>
+  <symbol id="ic-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 17v3h16v-3"/></symbol>
+  <symbol id="ic-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="ic-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6m4-6v6"/></symbol>
+  <symbol id="ic-reset" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2-5.3L4 9M4 3v6h6"/></symbol>
+  <symbol id="ic-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+  <symbol id="ic-rotate" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 1-3-6M20 4v7h-7"/></symbol>
+  <symbol id="ic-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="ic-sparkle" viewBox="0 0 24 24"><path d="m12 2 2.5 7.5L22 12l-7.5 2.5L12 22l-2.5-7.5L2 12l7.5-2.5z"/></symbol>
+  <symbol id="ic-zoom" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5M8 10.5h5"/></symbol>
+  <symbol id="ic-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+</svg>
+
+<div class="app-shell">
+  <header class="topbar">
+    <div class="brand" aria-label="FotoLab Studio">
+      <div class="brand-mark"><svg><use href="#ic-sparkle"></use></svg></div>
+      <span class="brand-name">FotoLab <b>Studio</b></span>
+      <span class="brand-version">2.1</span>
+    </div>
+    <div class="header-center"><span class="live-dot"></span> Tu espacio creativo, sin complicaciones</div>
+    <div class="header-actions">
+      <button id="newImageBtn" class="btn btn-subtle" type="button"><svg class="icon"><use href="#ic-plus"/></svg><span class="hide-sm">Nueva foto</span></button>
+      <button id="exportBtn" class="btn btn-primary" type="button" disabled><svg class="icon"><use href="#ic-download"/></svg> Exportar <span class="hide-sm">imagen</span></button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <nav class="tool-rail" aria-label="Herramientas principales">
+      <p class="rail-label">EDITAR</p>
+      <button class="rail-tool active" type="button" data-tool="adjust" title="Ajustes de imagen">
+        <svg class="icon"><use href="#ic-sliders"/></svg><span>Ajustes</span>
+      </button>
+      <button class="rail-tool" type="button" data-tool="crop" title="Recortar fotografía">
+        <svg class="icon"><use href="#ic-crop"/></svg><span>Recortar</span>
+      </button>
+      <button class="rail-tool" type="button" data-tool="resize" title="Cambiar dimensiones">
+        <svg class="icon"><use href="#ic-resize"/></svg><span>Tamaño</span>
+      </button>
+      <button class="rail-tool" type="button" data-tool="blur" title="Pincel de desenfoque">
+        <svg class="icon"><use href="#ic-blur"/></svg><span>Desenfocar</span>
+      </button>
+      <button class="rail-tool" type="button" data-tool="emoji" title="Insertar emojis">
+        <svg class="icon"><use href="#ic-smile"/></svg><span>Emojis</span>
+      </button>
+      <button class="rail-tool" type="button" data-tool="privacy" title="Limpiar metadatos">
+        <svg class="icon"><use href="#ic-shield"/></svg><span>Privacidad</span>
+      </button>
+      <button class="rail-tool" type="button" data-tool="select" title="Mover emojis y stickers">
+        <svg class="icon"><use href="#ic-cursor"/></svg><span>Seleccionar</span>
+      </button>
+      <div class="rail-spacer"></div>
+      <button class="rail-tool rail-bottom" id="railHelpBtn" type="button" title="Ayuda y atajos">
+        <svg class="icon"><use href="#ic-info"/></svg><span>Ayuda</span>
+      </button>
+    </nav>
+
+    <main class="editor-main">
+      <div class="editor-toolbar">
+        <div class="file-chip"><span class="file-icon"><svg class="icon"><use href="#ic-image"/></svg></span><div><strong id="fileTitle">Sin imagen abierta</strong><small id="fileDimensions">Abre una foto para comenzar</small></div></div>
+        <div class="editor-controls">
+          <button id="undoBtn" class="icon-button" title="Deshacer · Ctrl+Z" aria-label="Deshacer" disabled><svg class="icon"><use href="#ic-undo"/></svg></button>
+          <button id="redoBtn" class="icon-button" title="Rehacer · Ctrl+Shift+Z" aria-label="Rehacer" disabled><svg class="icon"><use href="#ic-redo"/></svg></button>
+          <span class="separator"></span>
+          <button id="compareBtn" class="btn btn-compare" title="Mantén pulsado para ver original" disabled><svg class="icon"><use href="#ic-eye"/></svg><span class="hide-sm">Original</span></button>
+        </div>
+      </div>
+
+      <div id="stage" class="stage" aria-label="Área de edición de imagen">
+        <div id="emptyState" class="empty-state">
+          <div class="empty-art" aria-hidden="true">
+            <div class="art-window">
+              <div class="art-sun"></div><div class="art-mountain m-one"></div><div class="art-mountain m-two"></div>
+              <div class="art-shine">✦</div>
+            </div>
+            <span class="float-chip one">☀️ <b>Brillo</b></span>
+            <span class="float-chip two">🎨 <b>Color</b></span>
+            <span class="float-chip three">✨ <b>Creatividad</b></span>
+          </div>
+          <span class="eyebrow">TU ESTUDIO FOTOGRÁFICO</span>
+          <h1>Haz que cada foto<br><em>cuente una historia.</em></h1>
+          <p>Mejora los colores, desenfoca lo que quieras y añade tu toque personal. Todo en un mismo lugar.</p>
+          <button id="welcomeUploadBtn" class="btn btn-primary btn-large"><svg class="icon"><use href="#ic-image"/></svg> Elegir fotografía</button>
+          <div class="drop-hint">O arrastra una imagen aquí <span>·</span> JPG, PNG, WEBP</div>
+        </div>
+        <div id="canvasHolder" class="canvas-holder hidden">
+          <canvas id="photoCanvas" aria-label="Fotografía en edición"></canvas>
+          <div id="brushCursor" class="brush-cursor hidden"></div>
+          <div id="originalBadge" class="original-badge hidden">Vista original</div>
+        </div>
+        <div id="dropOverlay" class="drop-overlay hidden"><svg class="icon"><use href="#ic-image"/></svg><strong>Suelta tu fotografía</strong><span>Comienza a crear algo increíble</span></div>
+      </div>
+
+      <div class="canvas-footer">
+        <div class="footer-tip"><span class="tip-dot"></span><span id="statusText">Listo para empezar. Tu creatividad no tiene límites.</span></div>
+        <div class="zoom-controls"><button id="zoomOutBtn" class="icon-button small" aria-label="Reducir zoom" disabled>−</button><button id="zoomLabel" class="zoom-label" title="Restablecer zoom" disabled>100%</button><button id="zoomInBtn" class="icon-button small" aria-label="Aumentar zoom" disabled>+</button><button id="fitBtn" class="fit-button" disabled>Encajar</button></div>
+      </div>
+    </main>
+
+    <aside class="inspector" aria-label="Panel de herramientas">
+      <div class="inspector-head"><div><span class="eyebrow">PANEL DE EDICIÓN</span><h2 id="inspectorHeading">Ajustes de imagen</h2></div><div class="panel-orb"><svg class="icon"><use href="#ic-sliders"/></svg></div></div>
+
+      <section id="adjustPanel" class="panel active">
+        <div class="panel-section-heading"><h3>Looks rápidos</h3><span>Un clic para transformar</span></div>
+        <div class="presets" id="presets">
+          <button class="preset active" data-preset="original"><span class="preset-preview look-original">◐</span><span>Original</span></button>
+          <button class="preset" data-preset="vibrante"><span class="preset-preview look-vibrant">◐</span><span>Vibrante</span></button>
+          <button class="preset" data-preset="calido"><span class="preset-preview look-warm">◐</span><span>Cálido</span></button>
+          <button class="preset" data-preset="frio"><span class="preset-preview look-cool">◐</span><span>Frío</span></button>
+          <button class="preset" data-preset="bn"><span class="preset-preview look-bw">◐</span><span>B & N</span></button>
+        </div>
+        <div class="panel-divider"></div>
+        <div class="panel-section-heading secondary"><h3>Luz y color</h3><button class="text-action" id="resetAdjustBtn">Restablecer</button></div>
+        <div id="adjustControls" class="sliders">
+          <label class="range-field"><span class="range-label"><span>Brillo</span><output id="brightnessValue">100%</output></span><input type="range" id="brightness" min="0" max="200" step="1" value="100"></label>
+          <label class="range-field"><span class="range-label"><span>Contraste</span><output id="contrastValue">100%</output></span><input type="range" id="contrast" min="0" max="200" step="1" value="100"></label>
+          <label class="range-field"><span class="range-label"><span>Saturación</span><output id="saturationValue">100%</output></span><input type="range" id="saturation" min="0" max="200" step="1" value="100"></label>
+          <label class="range-field"><span class="range-label"><span>Temperatura</span><output id="warmthValue">0</output></span><input type="range" id="warmth" min="-100" max="100" step="1" value="0"></label>
+          <label class="range-field"><span class="range-label"><span>Matiz</span><output id="hueValue">0°</output></span><input type="range" id="hue" min="-180" max="180" step="1" value="0"></label>
+          <label class="range-field"><span class="range-label"><span>Suavizado global</span><output id="softnessValue">0</output></span><input type="range" id="softness" min="0" max="15" step="1" value="0"></label>
+        </div>
+        <div class="note"><svg class="icon"><use href="#ic-info"/></svg><span>Consejo: empieza con cambios sutiles para mantener un aspecto natural.</span></div>
+      </section>
+
+      <section id="cropPanel" class="panel">
+        <div class="tool-intro"><span class="intro-icon purple"><svg class="icon"><use href="#ic-crop"/></svg></span><div><h3>Recorte visual</h3><p>Arrastra los bordes de la selección para ajustarla o dibuja un nuevo rectángulo sobre la fotografía.</p></div></div>
+        <div class="panel-divider"></div>
+        <h3 class="section-subtitle">Proporción</h3>
+        <div id="cropRatios" class="ratio-grid">
+          <button type="button" data-ratio="free" class="chip active">Libre</button>
+          <button type="button" data-ratio="original" class="chip">Original</button>
+          <button type="button" data-ratio="1" class="chip">1:1</button>
+          <button type="button" data-ratio="1.3333333333" class="chip">4:3</button>
+          <button type="button" data-ratio="1.7777777778" class="chip">16:9</button>
+          <button type="button" data-ratio="0.75" class="chip">3:4</button>
+        </div>
+        <div class="crop-readout" id="cropReadout">Abre una fotografía para recortar</div>
+        <button id="applyCropBtn" class="btn btn-primary full" type="button"><svg class="icon"><use href="#ic-check"/></svg> Aplicar recorte</button>
+        <button id="resetCropBtn" class="btn btn-outline full secondary-btn" type="button">Reiniciar selección</button>
+        <div class="note"><svg class="icon"><use href="#ic-info"/></svg><span>El recorte no destruye el original mientras editas: puedes deshacerlo con Ctrl+Z.</span></div>
+      </section>
+
+      <section id="resizePanel" class="panel">
+        <div class="tool-intro"><span class="intro-icon purple"><svg class="icon"><use href="#ic-resize"/></svg></span><div><h3>Cambiar tamaño</h3><p>Indica las dimensiones de salida en píxeles. La fotografía se escalará sin deformarla si mantienes la proporción.</p></div></div>
+        <div class="panel-divider"></div>
+        <div class="dimension-grid">
+          <label>Anchura (px)<input id="resizeWidth" type="number" min="1" max="4200" step="1" inputmode="numeric"></label>
+          <label>Altura (px)<input id="resizeHeight" type="number" min="1" max="4200" step="1" inputmode="numeric"></label>
+        </div>
+        <label class="check-row"><input type="checkbox" id="lockAspect" checked> <span>Mantener proporción <span aria-hidden="true">🔗</span></span></label>
+        <div class="size-presets"><button class="chip" type="button" data-resize="0.5">50%</button><button class="chip" type="button" data-resize="1">100%</button><button class="chip" type="button" data-resize="2">200%</button></div>
+        <p id="sizeReadout" class="crop-readout">Dimensiones actuales</p>
+        <button id="applyResizeBtn" class="btn btn-primary full" type="button"><svg class="icon"><use href="#ic-check"/></svg> Aplicar dimensiones</button>
+        <div class="note"><svg class="icon"><use href="#ic-info"/></svg><span>Límite de 4200 px por lado y 35 millones de píxeles. Ampliar una foto no recupera detalle inexistente.</span></div>
+      </section>
+
+      <section id="blurPanel" class="panel">
+        <div class="tool-intro"><span class="intro-icon purple"><svg class="icon"><use href="#ic-blur"/></svg></span><div><h3>Desenfoque selectivo</h3><p>Pinta directamente sobre la foto las áreas que quieras difuminar.</p></div></div>
+        <div class="panel-divider"></div>
+        <label class="range-field"><span class="range-label"><span>Tamaño del pincel</span><output id="brushSizeValue">64 px</output></span><input type="range" id="brushSize" min="12" max="240" step="2" value="64"></label>
+        <label class="range-field"><span class="range-label"><span>Intensidad</span><output id="blurStrengthValue">18 px</output></span><input type="range" id="blurStrength" min="3" max="48" step="1" value="18"></label>
+        <div class="brush-preview"><span>Vista del pincel</span><div id="brushDemo" class="brush-demo"><div></div></div></div>
+        <button id="clearBlurBtn" class="btn btn-outline full"><svg class="icon"><use href="#ic-trash"/></svg> Quitar todos los desenfoques</button>
+        <div class="note"><svg class="icon"><use href="#ic-info"/></svg><span>Ideal para difuminar fondos, matrículas o detalles de una imagen. No sustituye la eliminación irreversible de datos privados.</span></div>
+      </section>
+
+      <section id="emojiPanel" class="panel">
+        <div class="tool-intro"><span class="intro-icon yellow"><svg class="icon"><use href="#ic-smile"/></svg></span><div><h3>Agrega un toque divertido</h3><p>Elige un emoji para colocarlo y luego arrástralo a donde quieras.</p></div></div>
+        <div class="panel-section-heading secondary"><h3>Emojis</h3></div>
+        <div class="emoji-palette" id="emojiPalette" aria-label="Colección de emojis"></div>
+        <div class="panel-divider"></div>
+        <div class="tool-intro"><span class="intro-icon yellow"><svg class="icon"><use href="#ic-sticker"/></svg></span><div><h3>Mis stickers</h3><p>Sube JPG, PNG o WebP. Las imágenes transparentes conservan su fondo transparente.</p></div></div>
+        <button id="uploadStickerBtn" class="btn btn-outline full sticker-upload" type="button"><svg class="icon"><use href="#ic-plus"/></svg> Cargar imagen como sticker</button>
+        <div id="stickerPalette" class="sticker-palette" aria-label="Mis stickers"></div>
+        <p id="stickerEmpty" class="small-muted">Todavía no has cargado stickers. Puedes usar un PNG transparente.</p>
+        <div class="panel-divider"></div>
+        <div id="emojiOptions" class="emoji-options hidden">
+          <div class="panel-section-heading secondary"><h3 id="overlaySelectedTitle">Elemento seleccionado</h3><button class="text-action danger" id="removeEmojiBtn">Eliminar</button></div>
+          <label class="range-field"><span class="range-label"><span>Tamaño</span><output id="emojiSizeValue">100 px</output></span><input type="range" id="emojiSize" min="24" max="350" step="2" value="100"></label>
+          <label class="range-field"><span class="range-label"><span>Rotación</span><output id="emojiRotationValue">0°</output></span><input type="range" id="emojiRotation" min="-180" max="180" step="1" value="0"></label>
+        </div>
+        <div id="emojiEmptyTip" class="note"><svg class="icon"><use href="#ic-info"/></svg><span>Puedes agregar tantos emojis como quieras. Usa «Seleccionar» para moverlos.</span></div>
+      </section>
+      <section id="privacyPanel" class="panel">
+        <div class="tool-intro"><span class="intro-icon purple"><svg class="icon"><use href="#ic-shield"/></svg></span><div><h3>Privacidad de la imagen</h3><p>Guarda fotografías nuevas sin adjuntar información invisible del archivo original.</p></div></div>
+        <div class="panel-divider"></div>
+        <div class="privacy-feature"><b>Se elimina al guardar</b><p>Información EXIF y GPS, comentarios, datos XMP/IPTC y perfiles ICC incrustados. La orientación EXIF se aplica antes de eliminarla.</p></div>
+        <button id="cleanOriginalBtn" class="btn btn-primary full" type="button"><svg class="icon"><use href="#ic-shield"/></svg> Descargar original limpio</button>
+        <div class="note"><svg class="icon"><use href="#ic-info"/></svg><span>La exportación habitual también elimina estos metadatos. Eliminar metadatos no borra datos que sean visibles dentro de la propia fotografía.</span></div>
+      </section>
+      <div class="inspector-bottom"><span class="privacy-dot"></span><div><b>Edición en tu navegador</b><span>Al exportar, el servidor procesa la imagen. El original se envía solo si eliges limpiarlo.</span></div></div>
+    </aside>
+  </div>
+</div>
+
+<input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+<input id="stickerInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<dialog id="exportDialog" class="dialog">
+  <form id="exportForm" method="dialog">
+    <div class="dialog-heading"><span class="dialog-icon"><svg class="icon"><use href="#ic-download"/></svg></span><div><h2>Exportar fotografía</h2><p>Tu creación está lista para compartir.</p></div><button class="icon-button" type="button" id="closeExportBtn" aria-label="Cerrar">×</button></div>
+    <label class="dialog-label" for="formatSelect">Formato de archivo</label>
+    <select id="formatSelect"><option value="png">PNG · Máxima calidad</option><option value="jpg">JPG · Ligero y compatible</option><option value="webp">WebP · Compacto y moderno</option></select>
+    <p class="export-meta" id="exportMeta">Tu imagen se guardará con todos los cambios.</p>
+    <div class="export-privacy"><svg class="icon"><use href="#ic-shield"/></svg><span>Metadatos EXIF, ubicación GPS y otros datos incrustados: <strong>se eliminan automáticamente.</strong></span></div>
+    <div class="dialog-actions"><button type="button" class="btn btn-outline" id="cancelExportBtn">Cancelar</button><button type="submit" id="confirmExportBtn" class="btn btn-primary"><svg class="icon"><use href="#ic-download"/></svg> Descargar</button></div>
+  </form>
+</dialog>
+<dialog id="helpDialog" class="dialog help-dialog"><div class="dialog-heading"><span class="dialog-icon"><svg class="icon"><use href="#ic-info"/></svg></span><div><h2>Guía rápida</h2><p>Exprésate sin complicarte.</p></div><button class="icon-button" type="button" id="closeHelpBtn" aria-label="Cerrar">×</button></div><div class="help-rows"><div><strong>1. Importa tu imagen</strong><p>Pulsa «Nueva foto» o arrastra un archivo JPG, PNG o WebP.</p></div><div><strong>2. Personaliza</strong><p>Modifica luz, recorta, redimensiona, pinta desenfoques e inserta emojis y stickers personalizados.</p></div><div><strong>3. Descarga sin metadatos</strong><p>Exporta la edición o usa «Privacidad» para limpiar el original sin modificarlo visualmente.</p></div></div><div class="hotkey-list"><span>Deshacer</span><kbd>Ctrl</kbd>+<kbd>Z</kbd><span>Rehacer</span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd><span>Seleccionar</span><kbd>V</kbd><span>Pincel</span><kbd>B</kbd><span>Eliminar elemento</span><kbd>Supr</kbd></div><button type="button" class="btn btn-primary full" id="gotItBtn">Entendido</button></dialog>
+<script src="{{ url_for('static', filename='js/editor.js') }}" defer></script>
+</body>
+</html>

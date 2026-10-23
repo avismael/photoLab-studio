@@ -1,0 +1,27 @@
+# Comprobación local del contenedor: docker compose up --build -d
+# Solo publica en 127.0.0.1, no queda accesible en la red externa del servidor.
+services:
+  fotolab:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fotolab-studio:local
+    ports:
+      - "127.0.0.1:5000:5000"
+    environment:
+      APP_ENV: production
+      APP_BASIC_USER: ${APP_BASIC_USER:?Configura APP_BASIC_USER en .env}
+      APP_BASIC_PASSWORD: ${APP_BASIC_PASSWORD:?Configura APP_BASIC_PASSWORD en .env (16+ caracteres)}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
+      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-120}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 1.5

@@ -1,0 +1,57 @@
+name: Validar FotoLab Studio
+
+'on':
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python-tests:
+    name: Tests del backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Instalar dependencias
+        run: |
+          python -m pip install -r requirements.txt pytest
+      - name: Ejecutar pruebas
+        run: python -m pytest -q
+      - name: Verificar sintaxis del backend
+        run: python -m compileall -q app.py image_pipeline.py gunicorn.conf.py
+
+  docker-smoke:
+    name: Construir y probar Docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Docker build
+        run: docker build --tag fotolab-studio:ci .
+      - name: Iniciar contenedor de producción
+        run: |
+          docker run --detach --name fotolab-test --publish 127.0.0.1:5000:5000 \
+            --env APP_BASIC_USER=editor \
+            --env APP_BASIC_PASSWORD=CI_test_password_123456789 \
+            fotolab-studio:ci
+      - name: Healthcheck, autenticación y cabeceras
+        run: |
+          set -eu
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:5000/api/health > /dev/null; then break; fi
+            sleep 2
+          done
+          curl --fail --silent http://127.0.0.1:5000/api/health | grep '"ok":true'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:5000/)" = 401
+          curl --fail --silent -u editor:CI_test_password_123456789 http://127.0.0.1:5000/ | grep 'photoCanvas'
+      - name: Logs del contenedor al fallar
+        if: failure()
+        run: docker logs fotolab-test
+      - name: Detener
+        if: always()
+        run: docker rm -f fotolab-test || true

@@ -1,0 +1,27 @@
+# Opcional: usar SOLO si creas un servicio "Compose" (Docker Compose) en Dokploy.
+# Para la ruta recomendada "Application", usa directamente el Dockerfile.
+# Configura el dominio en Dokploy > Domains: service=fotolab, port=5000.
+services:
+  fotolab:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    expose:
+      - "5000"
+    environment:
+      APP_ENV: production
+      APP_BASIC_USER: ${APP_BASIC_USER:?Debes configurar APP_BASIC_USER en Dokploy}
+      APP_BASIC_PASSWORD: ${APP_BASIC_PASSWORD:?Debes configurar APP_BASIC_PASSWORD en Dokploy}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
+      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-120}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 1.5
