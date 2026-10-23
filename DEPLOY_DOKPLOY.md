@@ -2,6 +2,8 @@
 
 La opción recomendada para **FotoLab Studio 2.1** es crear un servicio de tipo **Application** con método **Dockerfile**. No requiere PostgreSQL, almacenamiento persistente ni Redis.
 
+El editor con textos, formas, nodos y marcas por lote utiliza el mismo despliegue. Las fuentes de Google están incluidas en `static/fonts/` con sus licencias: el navegador las carga desde el propio dominio. No se necesita conexión a Google Fonts, Node.js en producción ni un proceso de compilación del frontend.
+
 ## 0. Requisitos
 
 - Un servidor con Dokploy instalado y acceso al panel administrativo.
@@ -90,6 +92,20 @@ Abre `http://127.0.0.1:5000` y escribe las credenciales. El Compose local **solo
 docker compose down
 ```
 
+### Actualizar una instalación existente
+
+En Dokploy, publica primero los commits en la rama configurada (normalmente `main`) y ejecuta **Deploy**, o espera al Auto Deploy. La incorporación de textos, formas y lotes no necesita nuevas variables de entorno ni migraciones. Conserva `static/fonts/` y sus licencias en el repositorio para que se incluyan en la imagen.
+
+En una instalación local con Compose, una vez actualizado el código:
+
+```bash
+docker compose up --build -d
+docker compose ps
+curl -fsS http://127.0.0.1:5000/api/health
+```
+
+No reemplaces un `.env` existente con `.env.example`. Recarga la página después del despliegue; los módulos JavaScript y la plantilla deben corresponder a la misma revisión. En ejecución local con Python también es necesario reiniciar el servidor tras actualizar las plantillas.
+
 ## 5. Verificación funcional después del despliegue
 
 - Acceso sin contraseña a `/` → **401 Unauthorized**.
@@ -97,6 +113,10 @@ docker compose down
 - `GET /api/health` → `200` y `"ok": true`.
 - Subir foto JPG/PNG/WebP, aplicar recorte, redimensionar, desenfocar, stickers y exportar.
 - Descargar el original limpio y revisar que no conserve datos EXIF/GPS/ICC.
+- Elegir Texto, pulsar en una posición de la imagen y escribir directamente. Confirmar con Listo o Ctrl/Cmd+Enter; volver a editar con un clic y comprobar Esc y Deshacer/Rehacer.
+- Comprobar las ocho fuentes, los iconos de las seis formas, la opacidad del relleno/borde, las capas y el redimensionado mediante nodos, también con zoom y rotación.
+- Verificar que `/static/fonts/Inter.ttf` y `/static/js/elements-core.js` responden con las credenciales del editor. Las solicitudes de fuentes deben ir al mismo dominio; se conserva la política `font-src 'self'`.
+- Abrir `/lotes`, cargar varias fotos y un logo, aplicar ajustes generales y excepciones, y descargar el ZIP. Los presets se guardan en el navegador y origen actuales, no en el servidor.
 - Probar desde móvil y desde HTTPS.
 - Comprobar que al reiniciar no se pierden archivos del servidor: **no se guardan imágenes**, pero el trabajo que no se haya descargado sí se pierde al recargar la página.
 
@@ -107,7 +127,7 @@ docker compose down
 - **No inicies sesión por HTTP público.** Configura HTTPS antes de escribir la contraseña.
 - No compartas credenciales ni dejes la aplicación abierta si el servidor es público. HTTP Basic presenta el diálogo nativo del navegador, no un formulario propio.
 - El contenedor usa usuario no privilegiado, root filesystem de solo lectura en Compose, capacidades restringidas y `/tmp` temporal.
-- Los límites actuales son **45 MB por petición**, formatos JPG/PNG/WebP y **35 millones de píxeles** en el backend. En el cliente, una foto inicial puede tener hasta 30 MB.
+- Los límites actuales son **45 MB por petición**, formatos JPG/PNG/WebP y **35 millones de píxeles** en el backend. El editor individual admite hasta 30 MB por foto inicial y optimiza a 4200 px por lado. El lote admite hasta 50 fotos de 42 MB por archivo y procesa una a la vez; el PNG intermedio también debe caber en 42 MB. El ZIP del navegador se limita a 512 MB.
 - Si esperas usuarios simultáneos, agrega un control de acceso externo, límites de tasa en Traefik y dimensionamiento de recursos. Elevar `WEB_CONCURRENCY` incrementa la memoria necesaria.
 - Mantén la imagen base y las dependencias actualizadas. Revisa y ejecuta el workflow GitHub Actions en cada cambio importante.
 - Si quitas o desactivas `APP_ENV=production`, también desactivas la obligación de configurar credenciales; **no lo hagas en un servidor público**.
@@ -122,5 +142,7 @@ docker compose down
 | Las fotos grandes tardan o fallan | Revisa RAM disponible, límites de carga, workers y logs. |
 | Fallo de HTTPS | DNS A correcto, certificado y puertos 80/443 operativos. |
 | Cambios en GitHub no se publican | Verifica rama `main`, permisos del proveedor y Auto Deploy/webhook. |
+| No aparecen iconos, edición directa o nodos nuevos | Confirma que se reconstruyó la imagen con la revisión esperada y recarga la página. Con Python local, reinicia el servidor para actualizar las plantillas. |
+| Una fuente no carga o se bloquea la exportación | Comprueba que los TTF de `static/fonts/` están en la imagen y responden desde el mismo dominio. Revisa respuestas 401/404 y conserva sus licencias. |
 
 Documentación oficial consultada: [Dokploy Applications](https://docs.dokploy.com/docs/core/applications), [Going Production](https://docs.dokploy.com/docs/core/applications/going-production), [Compose Domains](https://docs.dokploy.com/docs/core/docker-compose/domains).

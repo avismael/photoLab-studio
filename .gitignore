@@ -14,3 +14,14 @@ htmlcov/
 
 # Grafo local generado por Graphify
 /graphify-out/
+
+# Dependencias y cobertura de pruebas JavaScript
+node_modules/
+/coverage/
+/.nyc_output/
+
+# Capturas, descargas, trazas e informes de pruebas del navegador
+/.playwright-cli/
+/playwright-report/
+/test-results/
+/blob-report/

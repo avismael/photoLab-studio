@@ -1,0 +1,2 @@
+# Preserve the bundled upstream licenses, including their original whitespace.
+static/fonts/*-OFL.txt -text -whitespace

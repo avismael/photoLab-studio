@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/test_batch.mjs"
+    "test": "node --test tests/test_batch.mjs tests/test_elements.mjs"
   }
 }

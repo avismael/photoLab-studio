@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   batch-tests:
-    name: Geometría y ZIP de lotes
+    name: Geometría, elementos y ZIP
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,6 +20,7 @@ jobs:
       - name: Verificar módulos y ejecutar pruebas
         run: |
           node --check static/js/batch.js
+          node --check static/js/editor.js
           npm test
 
   python-tests:

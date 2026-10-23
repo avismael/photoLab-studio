@@ -23,3 +23,13 @@ README.md
 *.bat
 compose.yaml
 docker-compose.dokploy.yml
+
+# Herramientas locales e informes: no forman parte de la aplicación.
+graphify-out/
+node_modules/
+coverage/
+.nyc_output/
+.playwright-cli/
+playwright-report/
+test-results/
+blob-report/
