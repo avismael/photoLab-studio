@@ -28,6 +28,16 @@ def test_health():
     assert response.json['ok'] is True
 
 
+def test_batch_page_and_local_modules():
+    client = app.test_client()
+    response = client.get('/lotes')
+    assert response.status_code == 200
+    assert b'batchCanvas' in response.data
+    assert b'/static/js/batch.js' in response.data
+    for asset in ('js/batch.js', 'js/batch-core.js', 'js/batch-zip.js', 'css/batch.css'):
+        assert client.get('/static/' + asset).status_code == 200
+
+
 def test_export_formats():
     client = app.test_client()
     for fmt, pil_type in [('png','PNG'), ('jpg','JPEG'), ('webp','WEBP')]:
@@ -79,6 +89,7 @@ def test_production_credentials_protect_editor_and_apis(monkeypatch):
     with app.test_client() as client:
         response = client.get('/')
         assert response.status_code == 401
+        assert client.get('/lotes').status_code == 401
         assert response.headers['WWW-Authenticate'].startswith('Basic ')
         assert client.post('/api/export').status_code == 401
         assert client.post('/api/clean').status_code == 401

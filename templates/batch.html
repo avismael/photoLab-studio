@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111520">
+  <title>Marcas por lote · FotoLab Studio</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/batch.css') }}">
+  <script type="module" src="{{ url_for('static', filename='js/batch.js') }}"></script>
+</head>
+<body class="batch-page">
+  <header class="topbar">
+    <a class="batch-brand" href="/">FotoLab <b>Studio</b></a>
+    <span class="header-center">Tu firma, en cada fotografía</span>
+    <a class="btn btn-subtle" href="/">Volver al editor</a>
+  </header>
+  <main class="batch-main">
+    <div class="batch-heading"><div><span class="eyebrow">PROCESAMIENTO POR LOTES</span><h1>Una firma. Hasta 50 historias.</h1><p>Coloca tu logo una vez, revisa cada foto y descarga el lote sin metadatos.</p></div><span id="photoCount" class="batch-count">0 / 50 fotos</span></div>
+    <div class="batch-layout">
+      <section class="batch-workspace" aria-label="Fotografías del lote">
+        <div class="batch-actions">
+          <label class="btn btn-primary file-label">Añadir fotografías<input id="photosInput" type="file" accept="image/jpeg,image/png,image/webp" multiple></label>
+          <button id="removePhoto" class="btn btn-outline" disabled>Quitar seleccionada</button>
+          <button id="clearPhotos" class="btn btn-outline" disabled>Vaciar lote</button>
+        </div>
+        <div id="batchDrop" class="batch-stage" tabindex="0" aria-label="Suelta fotografías aquí">
+          <div id="batchEmpty" class="batch-empty"><svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true"><rect x="8" y="14" width="42" height="36" rx="6"/><path d="m10 43 12-13 10 10 7-7 11 11M20 8h30a6 6 0 0 1 6 6v28"/><circle cx="38" cy="25" r="4"/></svg><h2>Empieza con tus fotografías</h2><p>Arrástralas aquí o pulsa «Añadir fotografías».<br>JPG, PNG o WebP · Hasta 42 MB y 35 MP por foto.</p><p>Consejo: agrupa panorámicas o verticales para una firma consistente.</p></div>
+          <canvas id="batchCanvas" class="hidden" tabindex="0" aria-label="Vista previa. Arrastra el logo o usa las flechas del teclado para moverlo."></canvas>
+        </div>
+        <div class="batch-caption"><strong id="selectedName">Sin fotografía seleccionada</strong><span id="selectedDetails">La vista previa se adapta a la pantalla; la salida conserva la resolución.</span></div>
+        <div id="photoList" class="batch-thumbnails" aria-label="Seleccionar fotografía"></div>
+      </section>
+      <aside class="batch-inspector" aria-label="Configuración de la marca">
+        <fieldset id="batchSettings">
+          <legend>Tu marca de agua</legend>
+          <label class="btn btn-subtle file-label full">Cargar o cambiar logo<input id="logoInput" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          <div class="batch-logo"><img id="logoPreview" class="hidden" alt="Logo seleccionado"><span id="logoName">PNG transparente recomendado · Hasta 10 MB</span></div>
+          <label class="batch-field">Editar ajustes de<select id="editScope"><option value="all">Todo el lote</option><option value="photo">Solo esta fotografía</option></select></label>
+          <p id="scopeHint" class="batch-help">Los cambios generales conservan las fotos personalizadas.</p>
+          <label class="batch-field">Posición de anclaje<select id="anchor"><option value="0,0">Superior izquierda</option><option value="0.5,0">Superior centro</option><option value="1,0">Superior derecha</option><option value="0,0.5">Centro izquierda</option><option value="0.5,0.5">Centro</option><option value="1,0.5">Centro derecha</option><option value="0,1">Inferior izquierda</option><option value="0.5,1">Inferior centro</option><option value="1,1" selected>Inferior derecha</option></select></label>
+          <label class="batch-field" for="markSize">Tamaño / lado corto <output id="markSizeValue">18 %</output><input id="markSize" type="range" min="2" max="100" step="1" value="18"></label>
+          <label class="batch-field" for="markMargin">Margen / lado corto <output id="markMarginValue">3 %</output><input id="markMargin" type="range" min="0" max="20" step="0.5" value="3"></label>
+          <label class="batch-field" for="markOpacity">Opacidad <output id="markOpacityValue">65 %</output><input id="markOpacity" type="range" min="0" max="100" step="1" value="65"></label>
+          <p class="batch-help">Arrastrar el logo personaliza esta foto. Usa el botón de abajo para copiar su posición al lote. También puedes enfocar la vista previa y usar las flechas (Mayús para pasos grandes).</p>
+          <button id="applyAll" class="btn btn-subtle full">Usar estos ajustes en todo el lote</button>
+          <button id="resetPhoto" class="btn btn-outline full secondary-btn">Restablecer esta fotografía</button>
+          <p class="batch-help">«Usar estos ajustes» conserva las excepciones de otras fotos.</p>
+          <details class="batch-presets"><summary>Presets guardados en este navegador</summary>
+            <label class="batch-field">Nombre del preset<input id="presetName" type="text" maxlength="60" placeholder="Ej. Panorámicas — firma derecha"></label>
+            <button id="savePreset" class="btn btn-subtle full">Guardar logo y ajustes</button>
+            <label class="batch-field">Preset<select id="presetSelect"><option value="">Selecciona un preset</option></select></label>
+            <div class="batch-actions"><button id="loadPreset" class="btn btn-outline">Cargar</button><button id="deletePreset" class="btn btn-outline">Eliminar</button></div>
+          </details>
+          <label class="batch-field">Formato de salida<select id="batchFormat"><option value="jpg">JPG · Fotografía</option><option value="png">PNG · Sin pérdidas</option><option value="webp">WebP · Compacto</option></select></label>
+        </fieldset>
+        <button id="exportBatch" class="btn btn-primary full" disabled>Descargar lote ZIP</button>
+        <button id="cancelBatch" class="btn btn-outline full secondary-btn hidden">Cancelar proceso</button>
+        <progress id="batchProgress" max="50" value="0" aria-label="Progreso del procesamiento"></progress>
+        <p id="batchStatus" class="batch-status" role="status" aria-live="polite">Carga tus fotografías y un logo para comenzar.</p>
+        <ul id="batchErrors" class="batch-errors" aria-label="Detalles del procesamiento"></ul>
+        <p class="batch-help">Las fotos se procesan una a una. Cada resultado se envía al servidor para limpiar metadatos. El ZIP se prepara en tu navegador (máximo 512 MB).</p>
+      </aside>
+    </div>
+  </main>
+</body>
+</html>

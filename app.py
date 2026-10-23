@@ -65,6 +65,11 @@ def index():
     return render_template('index.html')
 
 
+@app.get('/lotes')
+def batch_watermarks():
+    return render_template('batch.html')
+
+
 @app.get('/api/health')
 def health():
     return jsonify({'ok': True, 'app': 'FotoLab Studio', 'version': '2.1.0'})

@@ -26,6 +26,37 @@ Editor fotográfico web moderno con recorte, resizing, corrección de color, des
 - **Privacidad:** descargar una copia limpia de la imagen original (sin aplicar los cambios de edición).
 - **UI:** adaptable a pantallas de escritorio, tabletas y móviles; sin librerías de JavaScript externas.
 
+## Marcas de agua por lotes
+
+Abre **Marcas por lote** en la cabecera del editor, o visita `/lotes`.
+
+1. Añade hasta **50 fotografías** JPG, PNG o WebP. Conviene agrupar horizontales/panorámicas o verticales.
+2. Carga un logo (PNG transparente recomendado, hasta 10 MB). Los logos mayores de 2048 px se reducen conservando su proporción.
+3. Configura anclaje, tamaño, margen y opacidad. El tamaño corresponde al **ancho del logo como porcentaje del lado corto** de la foto; se limita si es necesario para que quepa completo. El margen también usa el lado corto.
+4. Los controles editan **Todo el lote** o **Solo esta fotografía**, según el selector. Arrastrar el logo o moverlo con las flechas del teclado personaliza la foto seleccionada. Mayús + flechas mueve con pasos mayores.
+5. **Usar estos ajustes en todo el lote** copia los ajustes del ámbito elegido; si es una foto personalizada, la convierte en referencia del lote. Las excepciones de las demás fotos se conservan. **Restablecer esta fotografía** elimina su excepción.
+6. Revisa las miniaturas con la marca aplicada. Elige JPG, PNG o WebP y descarga un ZIP con nombres únicos.
+
+Los presets guardan el logo y los ajustes en el almacenamiento **local de este navegador y origen**. Guardar el mismo nombre reemplaza el preset. Puedes cargarlos o eliminarlos desde el panel; borrar los datos del navegador también los elimina. No guardan las fotografías ni las excepciones del lote.
+
+### Límites y privacidad del lote
+
+- Se mantiene la resolución original y se respeta la orientación EXIF. Hasta 42 MB y 35 millones de píxeles por foto. Los límites de memoria/Canvas del navegador pueden ser menores en móviles.
+- La edición y las miniaturas se preparan en el navegador. Cada imagen marcada se envía secuencialmente a `/api/export` como PNG sin pérdidas y el backend la reencodifica sin EXIF, GPS, XMP ni ICC. El servidor no almacena las fotos.
+- El PNG de transporte también debe caber en 42 MB; una imagen muy detallada puede superar ese límite aunque su JPG original sea pequeño. Se informa del error por archivo y se continúa con los demás.
+- El ZIP se construye localmente (ZIP32, método STORE: las imágenes ya están comprimidas), sin CDN ni dependencias de JavaScript. Máximo **512 MB** de resultados; si se alcanza, se detiene y debes dividir el lote. Los resultados comprimidos del ZIP permanecen en memoria hasta la descarga; no se mantienen 50 fotos decodificadas a la vez.
+- Cancelar descarta el ZIP parcial y conserva el lote y sus ajustes. Los errores de archivos individuales se muestran en el panel; el ZIP incluye los resultados correctos. Al recargar o salir se pierde el lote, pero se conservan los presets guardados.
+
+### Pruebas de lotes
+
+Además de `pytest -q`, ejecuta con Node.js 22 o posterior (sin instalar paquetes npm):
+
+```bash
+npm test
+```
+
+Comprueba geometría proporcional, anclajes, presets, nombres únicos, cancelación y un ZIP de 50 entradas validado con `zipfile` de Python. La CI ejecuta estas pruebas junto con las del backend.
+
 ## Arquitectura
 
 ```text

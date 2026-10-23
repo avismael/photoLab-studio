@@ -9,6 +9,19 @@ permissions:
   contents: read
 
 jobs:
+  batch-tests:
+    name: Geometría y ZIP de lotes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar módulos y ejecutar pruebas
+        run: |
+          node --check static/js/batch.js
+          npm test
+
   python-tests:
     name: Tests del backend
     runs-on: ubuntu-latest
