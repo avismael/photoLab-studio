@@ -21,13 +21,13 @@ def test_home():
     assert response.status_code == 200
     assert b'FotoLab' in response.data
     assert b'photoCanvas' in response.data
-    for control in (b'addTextBtn', b'textFont', b'shapeFillOpacity', b'elementLayers', b'inlineTextEditor', b'finishInlineText'):
+    for control in (b'addTextBtn', b'textFont', b'shapeFillOpacity', b'elementLayers', b'inlineTextEditor', b'finishInlineText', b'documentList', b'multiExportDialog'):
         assert control in response.data
 
 
 def test_editor_self_hosted_fonts_and_modules():
     client = app.test_client()
-    for asset in ('js/elements-core.js', 'css/elements.css', 'fonts/fonts.css', 'fonts/Inter.ttf', 'fonts/Inter-OFL.txt'):
+    for asset in ('js/elements-core.js', 'js/editor-renderer.js', 'js/session-core.js', 'css/elements.css', 'css/session.css', 'fonts/fonts.css', 'fonts/Inter.ttf', 'fonts/Inter-OFL.txt'):
         response = client.get('/static/' + asset)
         assert response.status_code == 200
     assert "font-src 'self'" in response.headers['Content-Security-Policy']

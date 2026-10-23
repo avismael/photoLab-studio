@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   batch-tests:
-    name: Geometría, elementos y ZIP
+    name: Editor, sesiones y ZIP
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,6 +21,8 @@ jobs:
         run: |
           node --check static/js/batch.js
           node --check static/js/editor.js
+          node --check static/js/editor-renderer.js
+          node --check static/js/session-core.js
           npm test
 
   python-tests:

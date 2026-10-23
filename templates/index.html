@@ -8,6 +8,7 @@
   <title>FotoLab Studio · Editor de fotografías</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/elements.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/session.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='fonts/fonts.css') }}">
 </head>
 <body>
@@ -65,10 +66,12 @@
     <div class="header-center"><span class="live-dot"></span> Tu espacio creativo, sin complicaciones</div>
     <div class="header-actions">
       <a href="/lotes" class="btn btn-subtle batch-entry">Marcas por lote</a>
-      <button id="newImageBtn" class="btn btn-subtle" type="button"><svg class="icon"><use href="#ic-plus"/></svg><span class="hide-sm">Nueva foto</span></button>
+      <button id="newImageBtn" class="btn btn-subtle" type="button" aria-label="Añadir fotografías a la sesión"><svg class="icon"><use href="#ic-plus"/></svg><span class="hide-sm">Añadir fotos</span></button>
+      <button id="exportManyBtn" class="btn btn-subtle" type="button" disabled><svg class="icon" aria-hidden="true"><use href="#ic-download"/></svg><span class="hide-sm">Exportar </span>ZIP</button>
       <button id="exportBtn" class="btn btn-primary" type="button" disabled><svg class="icon"><use href="#ic-download"/></svg> Exportar <span class="hide-sm">imagen</span></button>
     </div>
   </header>
+  <details id="sessionIssues" class="session-issues hidden"><summary id="sessionIssuesTitle">Archivos no abiertos</summary><ul id="sessionIssueList"></ul></details>
 
   <div class="workspace">
     <nav class="tool-rail" aria-label="Herramientas principales">
@@ -127,8 +130,8 @@
           <span class="eyebrow">TU ESTUDIO FOTOGRÁFICO</span>
           <h1>Haz que cada foto<br><em>cuente una historia.</em></h1>
           <p>Mejora los colores, desenfoca lo que quieras y añade tu toque personal. Todo en un mismo lugar.</p>
-          <button id="welcomeUploadBtn" class="btn btn-primary btn-large"><svg class="icon"><use href="#ic-image"/></svg> Elegir fotografía</button>
-          <div class="drop-hint">O arrastra una imagen aquí <span>·</span> JPG, PNG, WEBP</div>
+          <button id="welcomeUploadBtn" class="btn btn-primary btn-large"><svg class="icon"><use href="#ic-image"/></svg> Elegir fotografías</button>
+          <div class="drop-hint">O arrastra varias imágenes aquí <span>·</span> JPG, PNG, WEBP · Hasta 50</div>
         </div>
         <div id="canvasHolder" class="canvas-holder hidden">
           <canvas id="photoCanvas" tabindex="0" aria-label="Fotografía en edición. Usa las flechas para mover el elemento seleccionado."></canvas>
@@ -141,8 +144,13 @@
           <button id="finishInlineText" type="button" class="btn btn-primary"><svg class="icon" aria-hidden="true"><use href="#ic-check"/></svg>Listo</button>
           <button id="cancelInlineText" type="button" class="btn btn-subtle" aria-label="Cancelar edición de texto">Cancelar</button>
         </div>
-        <div id="dropOverlay" class="drop-overlay hidden"><svg class="icon"><use href="#ic-image"/></svg><strong>Suelta tu fotografía</strong><span>Comienza a crear algo increíble</span></div>
+        <div id="dropOverlay" class="drop-overlay hidden"><svg class="icon"><use href="#ic-image"/></svg><strong>Suelta tus fotografías</strong><span>Se añadirán a tu sesión de edición</span></div>
       </div>
+
+      <section id="sessionStrip" class="session-strip hidden" aria-label="Fotografías abiertas">
+        <div class="session-toolbar"><span id="sessionSummary" role="status">0 fotografías</span><div class="session-navigation"><label><input id="selectAllDocuments" type="checkbox" checked> Todas para ZIP</label><button id="previousDocument" class="icon-button" type="button" aria-label="Fotografía anterior">‹</button><button id="nextDocument" class="icon-button" type="button" aria-label="Fotografía siguiente">›</button><button id="closeDocument" class="icon-button" type="button" title="Cerrar fotografía activa" aria-label="Cerrar fotografía activa"><svg class="icon" aria-hidden="true"><use href="#ic-trash"/></svg></button></div></div>
+        <div id="documentList" class="document-list" aria-label="Elegir fotografía para editar"></div>
+      </section>
 
       <div class="canvas-footer">
         <div class="footer-tip"><span class="tip-dot"></span><span id="statusText">Listo para empezar. Tu creatividad no tiene límites.</span></div>
@@ -293,9 +301,19 @@
   </div>
 </div>
 
-<input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+<input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>
 <input id="stickerInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="sessionLoading" class="session-loading hidden" role="status" aria-live="polite"><div><strong id="sessionLoadingText">Abriendo fotografías…</strong><button id="cancelSessionTask" class="btn btn-outline" type="button">Cancelar</button></div></div>
+<dialog id="multiExportDialog" class="dialog multi-export-dialog">
+  <form id="multiExportForm">
+    <div class="dialog-heading"><div><h2>Exportar fotografías</h2><p id="multiExportCount">Selecciona fotografías en la tira inferior.</p></div><button id="closeMultiExport" class="icon-button" type="button" aria-label="Cerrar exportación múltiple">×</button></div>
+    <label class="dialog-label" for="multiFormatSelect">Formato de las imágenes</label><select id="multiFormatSelect"><option value="png">PNG · Sin pérdidas</option><option value="jpg">JPG · Fotografía</option><option value="webp">WebP · Compacto</option></select>
+    <p class="export-meta">Cada fotografía conserva sus propios ajustes, recorte, tamaño, textos y capas. Se procesa una a una y se descarga un ZIP (máximo 512 MB) con nombres únicos, sin metadatos.</p>
+    <progress id="multiExportProgress" value="0" max="1" aria-label="Progreso de la exportación"></progress><p id="multiExportStatus" role="status" aria-live="polite">Listo para exportar.</p><ul id="multiExportErrors" class="multi-export-errors"></ul>
+    <div class="dialog-actions"><button id="cancelMultiExport" class="btn btn-outline" type="button">Cerrar</button><button id="confirmMultiExport" class="btn btn-primary" type="submit"><svg class="icon" aria-hidden="true"><use href="#ic-download"/></svg>Descargar ZIP</button></div>
+  </form>
+</dialog>
 <dialog id="exportDialog" class="dialog">
   <form id="exportForm" method="dialog">
     <div class="dialog-heading"><span class="dialog-icon"><svg class="icon"><use href="#ic-download"/></svg></span><div><h2>Exportar fotografía</h2><p>Tu creación está lista para compartir.</p></div><button class="icon-button" type="button" id="closeExportBtn" aria-label="Cerrar">×</button></div>

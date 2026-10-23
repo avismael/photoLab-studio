@@ -1,5 +1,8 @@
 /* FotoLab Studio · Editor de imágenes sin dependencias JavaScript externas. */
-import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resizeHandles, resizeElement} from './elements-core.js';
+import {SHAPES, textFont, textLayout, reorderElement, resizeHandles, resizeElement} from './elements-core.js';
+import {EditorSession, MAX_DOCUMENTS, DEFAULT_ADJUSTMENTS as EMPTY_ADJ, createEditorState, editorSnapshot, editedOutputName} from './session-core.js';
+import {renderDocument, overlaySize as measureOverlay} from './editor-renderer.js';
+import {ZipArchive} from './batch-zip.js';
 (() => {
   'use strict';
 
@@ -8,7 +11,6 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
   const ctx = canvas.getContext('2d');
   const stage = $('stage');
   const holder = $('canvasHolder');
-  const EMPTY_ADJ = Object.freeze({brightness: 100, contrast: 100, saturation: 100, warmth: 0, hue: 0, softness: 0});
   const PRESETS = {
     original: {...EMPTY_ADJ},
     vibrante: {brightness: 105, contrast: 112, saturation: 145, warmth: 5, hue: 0, softness: 0},
@@ -17,13 +19,9 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
     bn: {brightness: 103, contrast: 115, saturation: 0, warmth: 0, hue: 0, softness: 0},
   };
   const EMOJIS = ['😀','😍','🥰','😎','🥳','🤩','😂','😊','😇','😮','😭','😱','😴','🤔','🥹','❤️','💖','💜','💙','💚','✨','🌟','🔥','🎉','🎈','🎓','👑','💯','👍','👏','🙌','💐','🌸','🌈','☀️','🌻','🦋','🐱','🐶','🍀'];
-  const state = {
-    loaded: false, name: '', width: 0, height: 0,
-    adj: {...EMPTY_ADJ}, strokes: [], elements: [],
-    view: {x:0,y:0,w:0,h:0,outW:0,outH:0}, cropDraft: null, cropRatio: 'free',
-    tool: 'adjust', selectedEmoji: null,
-    brushSize: 64, blurStrength: 18, zoom: 100, comparing: false,
-  };
+  const state = createEditorState('',0,0);
+  const session = new EditorSession(), documentTiles = new Map();
+  let sessionBusy = '', taskController = null, thumbnailTimer = 0;
   let sourceCanvas = document.createElement('canvas');
   let renderRequest = 0;
   let pointerAction = null;
@@ -45,7 +43,7 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
   }
   function setStatus(message) { $('statusText').textContent = message; }
   function snapshot() {
-    return JSON.stringify({adj: state.adj, strokes: state.strokes, elements: state.elements, view: state.view});
+    return editorSnapshot(state);
   }
   function pushHistory() {
     if (!state.loaded || inlineEdit) return;
@@ -56,6 +54,7 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
     if (history.length > 45) history.shift();
     historyIndex = history.length - 1;
     updateHistoryButtons();
+    documentChanged(snap);
   }
   function restoreHistory(index) {
     finishInlineText(true);
@@ -66,6 +65,7 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
     historyIndex = index;
     if (!state.elements.some(e => e.id === state.selectedEmoji)) state.selectedEmoji = null;
     syncAdjustControls(); syncEmojiControls(); syncResizeControls(); resetCropDraft(); updateHistoryButtons(); scheduleRender();
+    documentChanged();
   }
   function updateHistoryButtons() {
     $('undoBtn').disabled = historyIndex <= 0;
@@ -214,6 +214,7 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
     fontOperations.add(task);
   }
   async function addText(position) {
+    if(sessionBusy)return;
     if(!state.loaded)return toast('Abre una fotografía antes de añadir texto.',true);
     if(creatingText)return;
     finishInlineText(true);creatingText=true;setTool('text');
@@ -222,7 +223,7 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
     const item={id:++nextEmojiId,kind:'text',text:'Tu texto',font:'Inter',size:Math.min(160,Math.max(20,Math.round(state.view.w*.06))),bold:false,italic:false,color:'#ffffff',align:'center',opacity:100,rotation:0,x:point.x,y:point.y};
     $('addTextBtn').disabled=true;
     try {
-      await ensureTextFont(item);if(source!==sourceCanvas||state.tool!=='text')return;
+      await ensureTextFont(item);if(source!==sourceCanvas||state.tool!=='text'||sessionBusy)return;
       state.elements.push(item);state.selectedEmoji=item.id;syncEmojiControls();
       beginInlineText(item,{isNew:true,selectAll:true});
     }catch(error){toast(error.message,true);}
@@ -350,83 +351,8 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
     layer.width = sourceSize ? sourceCanvas.width : state.width; layer.height = sourceSize ? sourceCanvas.height : state.height;
     return layer;
   }
-  function applyAdjustments() {
-    const base = cloneLayer(true), bctx = base.getContext('2d');
-    const a = state.adj;
-    bctx.filter = `brightness(${a.brightness}%) contrast(${a.contrast}%) saturate(${a.saturation}%) hue-rotate(${a.hue}deg) blur(${a.softness}px)`;
-    bctx.drawImage(sourceCanvas, 0, 0);
-    bctx.filter = 'none';
-    if (a.warmth !== 0) {
-      const alpha = (Math.abs(a.warmth) / 100 * .34).toFixed(3);
-      bctx.globalCompositeOperation = 'soft-light';
-      bctx.fillStyle = a.warmth > 0 ? `rgba(255,143,62,${alpha})` : `rgba(70,159,255,${alpha})`;
-      bctx.fillRect(0, 0, sourceCanvas.width, sourceCanvas.height);
-      bctx.globalCompositeOperation = 'source-over';
-    }
-    return base;
-  }
-  function paintStroke(maskCtx, stroke) {
-    const points = stroke.points;
-    if (!points.length) return;
-    maskCtx.strokeStyle = '#fff'; maskCtx.fillStyle = '#fff';
-    maskCtx.lineCap = 'round'; maskCtx.lineJoin = 'round'; maskCtx.lineWidth = stroke.size;
-    if (points.length === 1) {
-      maskCtx.beginPath(); maskCtx.arc(points[0][0], points[0][1], stroke.size / 2, 0, Math.PI*2); maskCtx.fill();
-    } else {
-      maskCtx.beginPath(); maskCtx.moveTo(points[0][0],points[0][1]);
-      for (let i=1; i<points.length; i++) maskCtx.lineTo(points[i][0],points[i][1]);
-      maskCtx.stroke();
-    }
-  }
-  function paintSelectiveBlur(outCtx, base) {
-    if (!state.strokes.length) return;
-    // Group strokes by blur amount so a single blurred image is used per intensity.
-    const groups = new Map();
-    for (const stroke of state.strokes) {
-      if (!groups.has(stroke.blur)) groups.set(stroke.blur, []);
-      groups.get(stroke.blur).push(stroke);
-    }
-    for (const [radius, strokes] of groups) {
-      const blurred = cloneLayer(true), blurCtx = blurred.getContext('2d');
-      blurCtx.filter = `blur(${radius}px)`;
-      blurCtx.drawImage(base, 0, 0);
-      blurCtx.filter = 'none';
-      const mask = cloneLayer(true), maskCtx = mask.getContext('2d');
-      for (const stroke of strokes) paintStroke(maskCtx, stroke);
-      const layer = cloneLayer(true), layerCtx = layer.getContext('2d');
-      layerCtx.drawImage(blurred, 0, 0);
-      layerCtx.globalCompositeOperation = 'destination-in';
-      layerCtx.drawImage(mask, 0, 0);
-      layerCtx.globalCompositeOperation = 'source-over';
-      outCtx.drawImage(layer, 0, 0);
-    }
-  }
   function overlaySize(outCtx, item) {
-    if (item.kind === 'text') return textLayout(outCtx, item);
-    if (item.kind === 'shape') return {w:item.width + item.strokeWidth,h:(item.shape === 'line' ? Math.max(16,item.strokeWidth) : item.height) + item.strokeWidth};
-    if (item.kind === 'sticker') {
-      const asset = stickerAssets.get(item.assetId);
-      if (!asset) return {w:item.size,h:item.size};
-      const scale = item.size / Math.max(asset.width, asset.height);
-      return {w:asset.width * scale,h:asset.height * scale};
-    }
-    outCtx.font = `${item.size}px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
-    return {w:Math.max(item.size*.7,outCtx.measureText(item.text).width),h:item.size};
-  }
-  function drawOverlay(outCtx, item) {
-    outCtx.save();outCtx.translate(item.x,item.y);outCtx.rotate(item.rotation*Math.PI/180);
-    const {w,h} = overlaySize(outCtx,item);
-    outCtx.globalAlpha = (item.opacity ?? 100) / 100;
-    if (item.kind === 'text') drawText(outCtx,item);
-    else if (item.kind === 'shape') drawShape(outCtx,item);
-    else if (item.kind === 'sticker') {
-      const asset = stickerAssets.get(item.assetId);
-      if (asset?.img?.complete) outCtx.drawImage(asset.img,-w/2,-h/2,w,h);
-    } else {
-      outCtx.textAlign='center';outCtx.textBaseline='middle';
-      outCtx.fillText(item.text,0,item.size*.045);
-    }
-    outCtx.restore();
+    return measureOverlay(outCtx,item,stickerAssets);
   }
   function resizeBox(item) {
     return item.kind === 'shape' ? {w:item.width,h:item.shape === 'line' ? 0 : item.height} : overlaySize(ctx,item);
@@ -503,18 +429,7 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
   function drawAll(target, showSelection=true) {
     if (!state.loaded) return;
     const renderCtx=target.getContext('2d');
-    renderCtx.setTransform(1,0,0,1,0,0);
-    renderCtx.clearRect(0,0,state.width,state.height);
-    const v=state.view;
-    const sx=state.width/v.w, sy=state.height/v.h;
-    renderCtx.setTransform(sx,0,0,sy,-v.x*sx,-v.y*sy);
-    if (state.comparing && showSelection) renderCtx.drawImage(sourceCanvas,0,0);
-    else {
-      const base=applyAdjustments();
-      renderCtx.drawImage(base,0,0);
-      paintSelectiveBlur(renderCtx,base);
-      for(const item of state.elements)if(!showSelection||inlineEdit?.id!==item.id)drawOverlay(renderCtx,item);
-    }
+    renderDocument(target,sourceCanvas,state,stickerAssets,{compare:state.comparing&&showSelection,skipElementId:showSelection?inlineEdit?.id:null});
     renderCtx.setTransform(1,0,0,1,0,0);
     if(showSelection&&!inlineEdit&&!state.comparing&&selectedEmoji()&&!['blur','crop'].includes(state.tool))drawSelection(renderCtx,selectedEmoji());
     if(showSelection)positionInlineText();
@@ -581,16 +496,16 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
     canvas.width = state.width;canvas.height = state.height;
     fitCanvas();syncAdjustControls();syncResizeControls();updateHistoryButtons();syncEmojiControls();scheduleRender();
   }
-  async function importPhoto(file) {
-    if (!file) return;
-    finishInlineText(true);
-    if (!['image/jpeg','image/png','image/webp'].includes(file.type)) return toast('Usa una imagen JPG, PNG o WebP.',true);
-    if (file.size > 30*1024*1024) return toast('La fotografía no puede superar 30 MB.',true);
+  async function decodeSource(file,signal) {
+    signal?.throwIfAborted();
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)||!file.size)throw Error('Usa una imagen JPG, PNG o WebP válida.');
+    if(file.size>30*1024*1024)throw Error('La fotografía supera 30 MB.');
     const url = URL.createObjectURL(file);
     const img = new Image();
     try {
       img.src=url;
-      await img.decode();
+      try{await img.decode();}catch(error){throw Error('No se pudo abrir la imagen. Comprueba el archivo.',{cause:error});}
+      signal?.throwIfAborted();
       const originalW = img.naturalWidth, originalH=img.naturalHeight;
       if (!originalW||!originalH) throw Error('La imagen no tiene dimensiones válidas.');
       const ratio = Math.min(1,4200/Math.max(originalW,originalH));
@@ -599,19 +514,141 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
       if (w*h>35_000_000) throw Error('La imagen tiene demasiados píxeles.');
       const temp = document.createElement('canvas');temp.width=w;temp.height=h;
       temp.getContext('2d').drawImage(img,0,0,w,h);
-      sourceCanvas = temp;
-      state.loaded = true;state.name=file.name;originalFile=file;
-      state.view={x:0,y:0,w,h,outW:w,outH:h};updateViewDimensions();
-      state.adj={...EMPTY_ADJ};state.strokes=[];state.elements=[];state.selectedEmoji=null;
-      state.zoom=100;state.comparing=false;state.cropRatio='free';history=[];historyIndex=-1;resetCropDraft();
-      $('fileTitle').textContent=file.name;
-      updateDimensionLabel();
-      if(ratio<1) setStatus('Original optimizado para la edición (máximo 4200 px).');
-      enableEditor();pushHistory();setTool('adjust');
-      toast('Fotografía cargada. ¡Hora de crear!');
-    } catch(error) {
-      console.error('Import error:',error);toast('No se pudo abrir la imagen. Comprueba el archivo.',true);
-    } finally {URL.revokeObjectURL(url);$('fileInput').value='';}
+      return temp;
+    }finally{img.src='';URL.revokeObjectURL(url);}
+  }
+  function thumbnailOf(source,editorState=null) {
+    const thumb=document.createElement('canvas'),w=editorState?.width||source.width,h=editorState?.height||source.height;
+    const scale=Math.min(1,192/w,96/h);thumb.width=Math.max(1,Math.round(w*scale));thumb.height=Math.max(1,Math.round(h*scale));
+    try {
+      if(editorState)renderDocument(thumb,source,editorState,stickerAssets);else thumb.getContext('2d').drawImage(source,0,0,thumb.width,thumb.height);
+      return thumb.toDataURL('image/webp',.8);
+    }finally{thumb.width=thumb.height=1;}
+  }
+  function refreshDocumentThumbnail() {
+    if(!session.active||!state.loaded)return;
+    try{session.active.thumbnail=thumbnailOf(sourceCanvas,state);updateSessionUI();}
+    catch(error){console.error('FotoLab thumbnail:',error);}
+  }
+  function documentChanged(signature) {
+    session.markActive(state,signature);updateSessionUI();clearTimeout(thumbnailTimer);
+    if(!sessionBusy)thumbnailTimer=setTimeout(()=>{if(!sessionBusy)refreshDocumentThumbnail();},350);
+  }
+  function updateSessionUI() {
+    const docs=session.documents,selected=docs.filter(doc=>doc.selected).length,index=docs.findIndex(doc=>doc.id===session.activeId);
+    $('sessionStrip').classList.toggle('hidden',!docs.length);
+    $('sessionSummary').textContent=`${docs.length} / ${MAX_DOCUMENTS} fotos · ${selected} para ZIP${index>=0?` · ${index+1} de ${docs.length}`:''}`;
+    $('exportManyBtn').disabled=!!sessionBusy||!selected;
+    $('selectAllDocuments').checked=!!docs.length&&selected===docs.length;$('selectAllDocuments').indeterminate=selected>0&&selected<docs.length;
+    $('previousDocument').disabled=index<=0;$('nextDocument').disabled=index<0||index>=docs.length-1;$('closeDocument').disabled=index<0;
+    for(const [id,tile] of documentTiles)if(!docs.some(doc=>doc.id===id)){tile.root.remove();documentTiles.delete(id);}
+    for(const doc of docs) {
+      let tile=documentTiles.get(doc.id);
+      if(!tile) {
+        const root=document.createElement('div');root.className='document-card';
+        const button=document.createElement('button');button.type='button';button.className='document-open';button.dataset.document=doc.id;
+        const img=document.createElement('img');img.alt='';img.width=112;img.height=52;
+        const name=document.createElement('strong');name.textContent=doc.file.name;button.append(img,name);button.title=doc.file.name;
+        button.addEventListener('click',()=>switchDocument(doc.id));
+        const label=document.createElement('label');label.className='document-export';
+        const check=document.createElement('input');check.type='checkbox';check.setAttribute('aria-label',`Incluir ${doc.file.name} en ZIP`);
+        check.addEventListener('change',()=>{doc.selected=check.checked;updateSessionUI();});
+        const badge=document.createElement('span');label.append(check,badge);root.append(button,label);$('documentList').append(root);
+        tile={root,button,img,check,badge};documentTiles.set(doc.id,tile);
+      }
+      const active=doc.id===session.activeId;tile.root.classList.toggle('is-active',active);
+      tile.button.setAttribute('aria-current',String(active));tile.button.setAttribute('aria-label',`Editar ${doc.file.name}${doc.edited?' · Editada':''}`);
+      if(tile.img.getAttribute('src')!==doc.thumbnail)tile.img.src=doc.thumbnail;
+      tile.check.checked=doc.selected;tile.badge.textContent=doc.edited?'Editada':'Original';
+    }
+  }
+  function beginSessionTask(kind,message,showOverlay=true) {
+    if(sessionBusy||pointerAction)return null;
+    sessionBusy=kind;taskController=new AbortController();clearTimeout(thumbnailTimer);
+    if(renderRequest){cancelAnimationFrame(renderRequest);renderRequest=0;}
+    document.querySelector('.workspace').inert=true;document.querySelector('.topbar').inert=true;
+    $('sessionLoadingText').textContent=message;$('sessionLoading').classList.toggle('hidden',!showOverlay);updateSessionUI();
+    return taskController.signal;
+  }
+  function endSessionTask() {
+    sessionBusy='';taskController=null;$('sessionLoading').classList.add('hidden');
+    document.querySelector('.workspace').inert=false;document.querySelector('.topbar').inert=false;
+    updateSessionUI();scheduleRender();
+  }
+  async function captureActive() {
+    finishInlineText(true);await Promise.all([...fontOperations]);
+    if(session.active){pushHistory();session.capture(state,history,historyIndex);refreshDocumentThumbnail();}
+  }
+  function activateDocument(doc,source) {
+    const oldSource=sourceCanvas;sourceCanvas=source;session.activeId=doc.id;
+    Object.assign(state,structuredClone(doc.state),{comparing:false});history=doc.history.slice();historyIndex=doc.historyIndex;originalFile=doc.file;
+    if(oldSource!==source)oldSource.width=oldSource.height=1;
+    $('fileTitle').textContent=doc.file.name;updateDimensionLabel();
+    $('compareBtn').classList.remove('pressed');$('originalBadge').classList.add('hidden');
+    $('lockAspect').checked=state.lockAspect;
+    document.querySelectorAll('[data-ratio]').forEach(button=>button.classList.toggle('active',button.dataset.ratio===state.cropRatio));
+    for(const id of ['brushSize','blurStrength']){$(id).value=state[id];$(id+'Value').textContent=state[id]+' px';updateRangeAppearance($(id));}
+    updateBrushDemo();if(!state.cropDraft)resetCropDraft();else updateCropReadout();enableEditor();setTool(state.tool);updateSessionUI();
+    documentTiles.get(doc.id)?.button.scrollIntoView({block:'nearest',inline:'nearest'});
+  }
+  async function switchDocument(id) {
+    if(sessionBusy||pointerAction||id===session.activeId)return false;
+    const doc=session.documents.find(item=>item.id===id);if(!doc)return false;
+    const signal=beginSessionTask('switch',`Abriendo ${doc.file.name}…`);if(!signal)return false;
+    let source;
+    try {
+      await captureActive();signal.throwIfAborted();source=await decodeSource(doc.file,signal);signal.throwIfAborted();
+      activateDocument(doc,source);source=null;return true;
+    }catch(error){toast(signal.aborted?'Cambio de fotografía cancelado.':error.message,true);return false;}
+    finally{if(source)source.width=source.height=1;endSessionTask();}
+  }
+  async function importPhotos(files) {
+    if(sessionBusy||pointerAction)return;
+    const incoming=Array.from(files||[]);if(!incoming.length)return;
+    const signal=beginSessionTask('import','Abriendo fotografías…');if(!signal)return;
+    const issues=[];let added=0,firstNew=null;
+    try {
+      await captureActive();
+      for(let index=0;index<incoming.length;index++) {
+        signal.throwIfAborted();
+        if(session.documents.length>=MAX_DOCUMENTS){issues.push(`Límite de ${MAX_DOCUMENTS} fotos: ${incoming.length-index} archivos no se añadieron.`);break;}
+        const file=incoming[index];let source;
+        $('sessionLoadingText').textContent=`Abriendo ${index+1} de ${incoming.length}: ${file.name}`;
+        try {
+          source=await decodeSource(file,signal);signal.throwIfAborted();
+          const doc=session.add(file,source.width,source.height,thumbnailOf(source));firstNew??=doc;added++;updateSessionUI();
+        }catch(error){if(signal.aborted)throw error;issues.push(`${file.name}: ${error.message}`);}
+        finally{if(source)source.width=source.height=1;}
+        await new Promise(resolve=>setTimeout(resolve,0));
+      }
+    }catch(error){if(!signal.aborted)issues.push(error.message);}
+    finally {
+      endSessionTask();$('fileInput').value='';
+      if(!session.active&&firstNew)await switchDocument(firstNew.id);
+      $('sessionIssueList').replaceChildren();
+      for(const issue of issues){const li=document.createElement('li');li.textContent=issue;$('sessionIssueList').append(li);}
+      $('sessionIssues').classList.toggle('hidden',!issues.length);$('sessionIssuesTitle').textContent=`Avisos de carga (${issues.length})`;
+      toast(`${signal.aborted?'Carga detenida. ':''}${added} fotografías añadidas${issues.length?'; consulta los archivos no abiertos':''}.`,!!issues.length);
+    }
+  }
+  async function closeActiveDocument() {
+    if(sessionBusy||pointerAction||!session.active)return;
+    const requested=session.activeId;finishInlineText(true);await Promise.all([...fontOperations]);
+    if(sessionBusy||session.activeId!==requested)return;
+    pushHistory();session.capture(state,history,historyIndex);
+    const doc=session.active,index=session.documents.indexOf(doc);
+    if(doc.edited&&!window.confirm(`¿Cerrar ${doc.file.name}? Sus ediciones se eliminarán de esta sesión. Exporta antes si deseas conservarlas.`))return;
+    const next=session.documents[index+1]||session.documents[index-1];
+    if(next){if(!await switchDocument(next.id))return;session.remove(doc.id);}
+    else {
+      session.remove(doc.id);clearTimeout(thumbnailTimer);if(renderRequest){cancelAnimationFrame(renderRequest);renderRequest=0;}
+      sourceCanvas.width=sourceCanvas.height=1;canvas.width=canvas.height=1;originalFile=null;history=[];historyIndex=-1;
+      Object.assign(state,createEditorState('',0,0));$('fileTitle').textContent='Sin imagen abierta';$('fileDimensions').textContent='Abre una foto para comenzar';
+      $('emptyState').classList.remove('hidden');holder.classList.add('hidden');
+      ['exportBtn','compareBtn','zoomOutBtn','zoomInBtn','zoomLabel','fitBtn'].forEach(id=>$(id).disabled=true);
+      syncEmojiControls();syncAdjustControls();updateHistoryButtons();setTool('adjust');
+    }
+    updateSessionUI();
   }
 
   function addEmoji(symbol) {
@@ -713,6 +750,7 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
     toast(`Recorte aplicado: ${state.width} × ${state.height} px`);
   });
   // Los campos de tamaño ajustan su par únicamente cuando el candado está activo.
+  $('lockAspect').addEventListener('change',()=>{state.lockAspect=$('lockAspect').checked;});
   for(const [own,other] of [['resizeWidth','resizeHeight'],['resizeHeight','resizeWidth']]) {
     $(own).addEventListener('input',()=> {
       if(!state.loaded||!$('lockAspect').checked)return;
@@ -749,6 +787,7 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
   // --- Stickers de imágenes del usuario. La carga se rasteriza localmente y no conserva EXIF. ---
   async function importSticker(file) {
     if(!file)return;
+    const documentId=session.activeId;
     if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>10*1024*1024)return toast('Sticker: usa JPG, PNG o WebP hasta 10 MB.',true);
     if(stickerAssets.size>=24)return toast('Puedes cargar hasta 24 stickers por sesión.',true);
     const url=URL.createObjectURL(file);
@@ -768,7 +807,7 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
       const thumb=document.createElement('img');thumb.src=clean;thumb.alt='Sticker '+file.name;tile.appendChild(thumb);
       tile.addEventListener('click',()=>addSticker(id));$('stickerPalette').appendChild(tile);
       $('stickerEmpty').classList.add('hidden');
-      if(state.loaded) addSticker(id);else toast('Sticker añadido a la biblioteca. Abre una foto para usarlo.');
+      if(state.loaded&&session.activeId===documentId&&!sessionBusy)addSticker(id);else toast('Sticker añadido a la biblioteca. Selecciona una foto para usarlo.');
     }catch(err){console.error('Sticker:',err);toast('No fue posible abrir este sticker.',true);}
     finally{URL.revokeObjectURL(url);}
   }
@@ -784,7 +823,7 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
   // estándar ya usa el backend que reencodifica los píxeles sin metadatos.
   function downloadBlob(blob,filename) {
     const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;
-    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60_000);
   }
   $('cleanOriginalBtn').addEventListener('click',async()=> {
     if(!originalFile)return toast('Abre una fotografía primero.',true);
@@ -802,7 +841,12 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
   });
 
   // Import controls
-  $('fileInput').addEventListener('change', e => importPhoto(e.target.files[0]));
+  $('fileInput').addEventListener('change', e => {const files=Array.from(e.target.files);e.target.value='';importPhotos(files);});
+  $('cancelSessionTask').addEventListener('click',()=>taskController?.abort());
+  $('selectAllDocuments').addEventListener('change',()=>{if(sessionBusy)return;for(const doc of session.documents)doc.selected=$('selectAllDocuments').checked;updateSessionUI();});
+  $('previousDocument').addEventListener('click',()=>{const index=session.documents.findIndex(doc=>doc.id===session.activeId);if(index>0)switchDocument(session.documents[index-1].id);});
+  $('nextDocument').addEventListener('click',()=>{const index=session.documents.findIndex(doc=>doc.id===session.activeId);if(index>=0&&index<session.documents.length-1)switchDocument(session.documents[index+1].id);});
+  $('closeDocument').addEventListener('click',closeActiveDocument);
   for (const id of ['newImageBtn','welcomeUploadBtn']) $(id).addEventListener('click',() => $('fileInput').click());
   for (const button of document.querySelectorAll('[data-tool]')) button.addEventListener('click',() => setTool(button.dataset.tool));
   for (const button of document.querySelectorAll('[data-preset]')) {
@@ -946,7 +990,7 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
   stage.addEventListener('dragenter',e=>{if(!e.dataTransfer?.types?.includes('Files'))return;e.preventDefault();dragDepth++;$('dropOverlay').classList.remove('hidden');});
   stage.addEventListener('dragover',e=>{e.preventDefault();e.dataTransfer.dropEffect='copy';});
   stage.addEventListener('dragleave',e=>{e.preventDefault();dragDepth=Math.max(0,dragDepth-1);if(!dragDepth)$('dropOverlay').classList.add('hidden');});
-  stage.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;$('dropOverlay').classList.add('hidden');importPhoto(e.dataTransfer.files[0]);});
+  stage.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;$('dropOverlay').classList.add('hidden');importPhotos(e.dataTransfer.files);});
   window.addEventListener('dragover',e=>{if(e.dataTransfer?.types?.includes('Files'))e.preventDefault();});
   window.addEventListener('drop',e=>{if(e.dataTransfer?.types?.includes('Files'))e.preventDefault();});
 
@@ -954,41 +998,91 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
   // validate and encode the desired PNG/JPEG/WebP file.
   const exportDialog=$('exportDialog');
   $('exportBtn').addEventListener('click',()=>{
-    if(!state.loaded)return;
+    if(!state.loaded||sessionBusy)return;finishInlineText(true);
     $('exportMeta').textContent=`Resolución ${state.width.toLocaleString('es')} × ${state.height.toLocaleString('es')} px · Cambios incluidos · Sin metadatos.`;
     exportDialog.showModal();
   });
-  $('closeExportBtn').addEventListener('click',()=>exportDialog.close());
-  $('cancelExportBtn').addEventListener('click',()=>exportDialog.close());
+  const closeSingleExport=()=>{if(sessionBusy==='single-export')taskController?.abort();else exportDialog.close();};
+  $('closeExportBtn').addEventListener('click',closeSingleExport);
+  $('cancelExportBtn').addEventListener('click',closeSingleExport);
+  exportDialog.addEventListener('cancel',event=>{if(sessionBusy){event.preventDefault();taskController?.abort();}});
+  function canvasBlob(surface) {
+    return new Promise((resolve,reject)=>surface.toBlob(blob=>blob?resolve(blob):reject(Error('No se pudo generar la imagen.')),'image/png'));
+  }
+  async function encodeImage(blob,format,signal) {
+    signal.throwIfAborted();if(blob.size>42*1024*1024)throw Error('La imagen procesada supera el límite de 42 MB. Reduce sus dimensiones antes de exportar.');
+    const payload=new FormData();payload.append('image',blob,'edicion.png');payload.append('format',format);
+    const response=await fetch('/api/export',{method:'POST',body:payload,signal});
+    if(!response.ok){const data=await response.json().catch(()=>({}));throw Error(data.error||`No fue posible exportar la fotografía (${response.status}).`);}
+    return response.blob();
+  }
   $('exportForm').addEventListener('submit',async event=>{
-    event.preventDefault();if(!state.loaded)return;
+    event.preventDefault();if(!state.loaded||sessionBusy)return;
+    const signal=beginSessionTask('single-export','Exportando fotografía…',false);if(!signal)return;
     const button=$('confirmExportBtn');button.disabled=true;button.textContent='Procesando…';
+    let output;
     try {
-      await Promise.all([...fontOperations]);
+      finishInlineText(true);await Promise.all([...fontOperations]);signal.throwIfAborted();
       await Promise.all(state.elements.filter(item => item.kind === 'text').map(ensureTextFont));
-      const output=cloneLayer();drawAll(output,false);
-      const blob=await new Promise((resolve,reject)=>output.toBlob(b=>b?resolve(b):reject(Error('No se pudo generar la imagen.')),'image/png'));
-      const payload=new FormData();payload.append('image',blob,'edicion.png');payload.append('format',$('formatSelect').value);
-      const response=await fetch('/api/export',{method:'POST',body:payload});
-      if(!response.ok){
-        let msg='No fue posible exportar la fotografía.';
-        try {msg=(await response.json()).error||msg;}catch(_){}
-        throw new Error(msg);
-      }
-      const result=await response.blob();
-      const url=URL.createObjectURL(result);
-      const a=document.createElement('a');a.href=url;
-      a.download=(state.name.replace(/\.[^.]+$/,'')||'fotografia')+'-fotolab.'+$('formatSelect').value;
-      document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+      output=cloneLayer();drawAll(output,false);
+      const result=await encodeImage(await canvasBlob(output),$('formatSelect').value,signal);signal.throwIfAborted();
+      downloadBlob(result,(state.name.replace(/\.[^.]+$/,'')||'fotografia')+'-fotolab.'+$('formatSelect').value);
       exportDialog.close();toast('¡Fotografía exportada correctamente!');
-    } catch(error) {console.error('Export error:',error);toast(error.message||'Error de exportación.',true);}
-    finally {button.disabled=false;button.innerHTML='<svg class="icon"><use href="#ic-download"/></svg> Descargar';}
+    } catch(error) {toast(signal.aborted?'Exportación cancelada.':error.message,true);if(signal.aborted)exportDialog.close();}
+    finally {if(output)output.width=output.height=1;endSessionTask();button.disabled=false;button.innerHTML='<svg class="icon"><use href="#ic-download"/></svg> Descargar';}
+  });
+  const multiDialog=$('multiExportDialog');
+  $('exportManyBtn').addEventListener('click',()=>{
+    if(sessionBusy)return;finishInlineText(true);
+    const count=session.documents.filter(doc=>doc.selected).length;if(!count)return;
+    $('multiExportCount').textContent=`${count} fotografías seleccionadas de ${session.documents.length} abiertas.`;
+    $('multiExportProgress').value=0;$('multiExportProgress').max=count;$('multiExportStatus').textContent='Listo para exportar.';
+    $('multiExportErrors').replaceChildren();multiDialog.showModal();
+  });
+  const closeMulti=()=>{if(sessionBusy==='multi-export')taskController?.abort();else multiDialog.close();};
+  $('closeMultiExport').addEventListener('click',closeMulti);$('cancelMultiExport').addEventListener('click',closeMulti);
+  multiDialog.addEventListener('cancel',event=>{if(sessionBusy){event.preventDefault();taskController?.abort();}});
+  $('multiExportForm').addEventListener('submit',async event=>{
+    event.preventDefault();if(sessionBusy)return;
+    const signal=beginSessionTask('multi-export','Exportando fotografías…',false);if(!signal)return;
+    $('confirmMultiExport').disabled=true;$('multiFormatSelect').disabled=true;$('cancelMultiExport').textContent='Cancelar proceso';
+    $('multiExportErrors').replaceChildren();$('multiExportProgress').value=0;
+    const format=$('multiFormatSelect').value,archive=new ZipArchive();let completed=0,failed=0;
+    try {
+      await captureActive();signal.throwIfAborted();const jobs=session.exportJobs();if(!jobs.length)throw Error('Selecciona alguna fotografía para exportar.');
+      $('multiExportProgress').max=jobs.length;
+      for(let index=0;index<jobs.length;index++) {
+        signal.throwIfAborted();const job=jobs[index];let source,output;
+        $('multiExportStatus').textContent=`Procesando ${index+1} de ${jobs.length}: ${job.file.name}`;
+        try {
+          source=job.id===session.activeId?sourceCanvas:await decodeSource(job.file,signal);signal.throwIfAborted();
+          await Promise.all(job.state.elements.filter(item=>item.kind==='text').map(ensureTextFont));signal.throwIfAborted();
+          output=document.createElement('canvas');output.width=job.state.width;output.height=job.state.height;
+          renderDocument(output,source,job.state,stickerAssets);
+          const encoded=await encodeImage(await canvasBlob(output),format,signal);
+          await archive.add(editedOutputName(job.file.name,index,format),encoded,signal);completed++;
+        }catch(error) {
+          if(signal.aborted)throw error;failed++;
+          const li=document.createElement('li');li.textContent=`${job.file.name}: ${error.message}`;$('multiExportErrors').append(li);
+          if(error.message.includes('512 MB'))throw error;
+        }finally {
+          if(source&&source!==sourceCanvas)source.width=source.height=1;
+          if(output)output.width=output.height=1;
+        }
+        $('multiExportProgress').value=index+1;await new Promise(resolve=>setTimeout(resolve,0));
+      }
+      signal.throwIfAborted();
+      if(completed)downloadBlob(archive.finish(),'fotolab-ediciones.zip');
+      $('multiExportStatus').textContent=completed?`ZIP listo: ${completed} fotografías exportadas${failed?`; ${failed} con errores (consulta los detalles)`:''}.`:'No se exportaron fotografías. Consulta los errores e inténtalo de nuevo.';
+    }catch(error){$('multiExportStatus').textContent=signal.aborted?'Exportación cancelada. No se descargó un ZIP parcial; tus ediciones se conservan.':`Exportación detenida: ${error.message} No se descargó un ZIP parcial.`;}
+    finally{endSessionTask();$('confirmMultiExport').disabled=false;$('multiFormatSelect').disabled=false;$('cancelMultiExport').textContent='Cerrar';}
   });
   const helpDialog=$('helpDialog');
   $('railHelpBtn').addEventListener('click',()=>helpDialog.showModal());
   $('closeHelpBtn').addEventListener('click',()=>helpDialog.close());
   $('gotItBtn').addEventListener('click',()=>helpDialog.close());
   document.addEventListener('keydown',event=>{
+    if(sessionBusy){if(event.key==='Escape')taskController?.abort();return;}
     if(pointerAction?.kind==='resize'&&event.key==='Escape') {
       event.preventDefault();const action=pointerAction;
       const item=state.elements.find(element=>element.id===action.id);if(item)Object.assign(item,action.initial);
@@ -996,7 +1090,7 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
       canvas.style.cursor='';syncEmojiControls();scheduleRender();return;
     }
     if(pointerAction)return;
-    if(['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName)||exportDialog.open||helpDialog.open)return;
+    if(['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName)||exportDialog.open||multiDialog.open||helpDialog.open)return;
     const ctrl=event.ctrlKey||event.metaKey;
     if(ctrl&&event.key.toLowerCase()==='z') {event.preventDefault();restoreHistory(historyIndex+(event.shiftKey?1:-1));}
     else if(ctrl&&event.key.toLowerCase()==='y'){event.preventDefault();restoreHistory(historyIndex+1);}
@@ -1010,5 +1104,6 @@ import {SHAPES, textFont, textLayout, drawText, drawShape, reorderElement, resiz
     else if(!ctrl&&event.key.toLowerCase()==='c')setTool('crop');
   });
   document.querySelectorAll('input[type=range]').forEach(updateRangeAppearance);
-  updateBrushDemo();syncAdjustControls();syncEmojiControls();updateHistoryButtons();
+  window.addEventListener('beforeunload',event=>{if(sessionBusy||inlineEdit||session.documents.some(doc=>doc.edited)){event.preventDefault();event.returnValue='';}});
+  updateBrushDemo();syncAdjustControls();syncEmojiControls();updateHistoryButtons();updateSessionUI();
 })();

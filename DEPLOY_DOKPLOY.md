@@ -4,6 +4,8 @@ La opción recomendada para **FotoLab Studio 2.1** es crear un servicio de tipo 
 
 El editor con textos, formas, nodos y marcas por lote utiliza el mismo despliegue. Las fuentes de Google están incluidas en `static/fonts/` con sus licencias: el navegador las carga desde el propio dominio. No se necesita conexión a Google Fonts, Node.js en producción ni un proceso de compilación del frontend.
 
+La sesión de edición de hasta 50 fotografías y su descarga en ZIP también funcionan en el navegador y reutilizan `/api/export` una imagen a la vez. No requieren nuevas rutas, volúmenes persistentes ni variables de entorno. Los módulos `static/js/session-core.js` y `static/js/editor-renderer.js` deben incluirse en la imagen junto con el resto de `static/`.
+
 ## 0. Requisitos
 
 - Un servidor con Dokploy instalado y acceso al panel administrativo.
@@ -117,6 +119,7 @@ No reemplaces un `.env` existente con `.env.example`. Recarga la página despué
 - Comprobar las ocho fuentes, los iconos de las seis formas, la opacidad del relleno/borde, las capas y el redimensionado mediante nodos, también con zoom y rotación.
 - Verificar que `/static/fonts/Inter.ttf` y `/static/js/elements-core.js` responden con las credenciales del editor. Las solicitudes de fuentes deben ir al mismo dominio; se conserva la política `font-src 'self'`.
 - Abrir `/lotes`, cargar varias fotos y un logo, aplicar ajustes generales y excepciones, y descargar el ZIP. Los presets se guardan en el navegador y origen actuales, no en el servidor.
+- En el editor principal, abrir varias fotos, aplicar ediciones distintas, alternar entre miniaturas y comprobar sus historiales. Marcar una selección, descargar el ZIP y verificar tamaños, textos y recortes por archivo. Cancelar una exportación debe conservar la sesión y permitir reintentarla.
 - Probar desde móvil y desde HTTPS.
 - Comprobar que al reiniciar no se pierden archivos del servidor: **no se guardan imágenes**, pero el trabajo que no se haya descargado sí se pierde al recargar la página.
 
@@ -128,6 +131,7 @@ No reemplaces un `.env` existente con `.env.example`. Recarga la página despué
 - No compartas credenciales ni dejes la aplicación abierta si el servidor es público. HTTP Basic presenta el diálogo nativo del navegador, no un formulario propio.
 - El contenedor usa usuario no privilegiado, root filesystem de solo lectura en Compose, capacidades restringidas y `/tmp` temporal.
 - Los límites actuales son **45 MB por petición**, formatos JPG/PNG/WebP y **35 millones de píxeles** en el backend. El editor individual admite hasta 30 MB por foto inicial y optimiza a 4200 px por lado. El lote admite hasta 50 fotos de 42 MB por archivo y procesa una a la vez; el PNG intermedio también debe caber en 42 MB. El ZIP del navegador se limita a 512 MB.
+- La sesión del editor admite hasta **50 fotografías de 30 MB**, con optimización a 4200 px por lado y exportación secuencial. Sus originales y estados se conservan en el navegador durante la sesión; recargar pierde las ediciones no descargadas. Cada PNG intermedio de exportación debe caber en 42 MB y el ZIP completo en 512 MB.
 - Si esperas usuarios simultáneos, agrega un control de acceso externo, límites de tasa en Traefik y dimensionamiento de recursos. Elevar `WEB_CONCURRENCY` incrementa la memoria necesaria.
 - Mantén la imagen base y las dependencias actualizadas. Revisa y ejecuta el workflow GitHub Actions en cada cambio importante.
 - Si quitas o desactivas `APP_ENV=production`, también desactivas la obligación de configurar credenciales; **no lo hagas en un servidor público**.

@@ -27,6 +27,24 @@ Editor fotográfico web con recorte, redimensionado, corrección de color, desen
 - **UI:** adaptable a pantallas de escritorio, tabletas y móviles; sin librerías de JavaScript externas.
 - **Texto:** varias líneas, ocho fuentes de Google alojadas localmente, tamaño, color, alineación, estilos y opacidad.
 - **Formas y capas:** rectángulos, elipses, triángulos, líneas y flechas; relleno, borde, opacidad, duplicación y orden de todos los elementos.
+- **Sesión de varias imágenes:** hasta 50 fotografías abiertas, ediciones e historial independientes, miniaturas y exportación de las seleccionadas en un ZIP.
+
+## Abrir y editar varias fotografías
+
+1. Pulsa **Añadir fotos** o **Elegir fotografías** y selecciona varios archivos; también puedes arrastrarlos al área del editor. Se admiten hasta **50 fotos por sesión**, JPG/PNG/WebP de hasta **30 MB por archivo**. Las fotos se optimizan a un máximo de 4200 px por lado, igual que en el editor anterior.
+2. Las miniaturas de la tira inferior permiten cambiar de fotografía. **Añadir fotos** incorpora más archivos sin reemplazar las ediciones existentes. Las flechas de la tira recorren las fotos y la papelera cierra la activa.
+3. Cada fotografía conserva ajustes de color, desenfoques, recorte aplicado y selección de recorte en curso, dimensiones, textos, formas, emojis, stickers, zoom, herramienta e historial de Deshacer/Rehacer. Una edición de texto en curso se confirma al cambiar de foto. La biblioteca de stickers es compartida, pero los stickers colocados pertenecen a cada fotografía.
+4. Las etiquetas **Original** y **Editada** comparan los píxeles/configuración de salida con el estado inicial; no indican si ya se descargó el archivo. Al cerrar una fotografía editada se solicita confirmación. Cerrar la última vuelve a la pantalla inicial.
+5. Marca las casillas de las miniaturas que quieras incluir y pulsa **Exportar ZIP**. **Todas para ZIP** marca o desmarca todas. La foto activa para editar y la selección para exportar son independientes; **Exportar imagen** sigue descargando únicamente la activa.
+6. Elige PNG, JPG o WebP. Cada archivo conserva su propio tamaño, recorte y elementos. El ZIP usa prefijos numéricos para que dos fotos con el mismo nombre no se sobrescriban. La exportación no cambia la foto activa ni su historial.
+
+### Procesamiento y límites de la sesión
+
+- Las fotos se validan secuencialmente y los archivos incorrectos se detallan en **Avisos de carga**. Alcanzar el límite de 50 no elimina fotos anteriores. Cancelar la carga conserva los archivos que ya se añadieron; cancelar un cambio de foto mantiene la activa con sus ediciones.
+- Solo se conserva la fuente decodificada de la fotografía activa para editar. Al cambiar de foto o exportar se decodifica temporalmente la siguiente fuente, se aplica su estado y se liberan los lienzos temporales. El estado, los originales seleccionados y las miniaturas permanecen en la sesión del navegador.
+- La exportación múltiple usa el mismo renderizador que la vista previa y la descarga individual. Procesa una foto a la vez y envía su PNG intermedio a `/api/export` para reencodificar sin metadatos; ese PNG debe caber en **42 MB**. El servidor no guarda las fotografías.
+- El ZIP se construye en el navegador con un máximo de **512 MB** de resultados. Los errores de archivos individuales se muestran en el diálogo y el ZIP incluye los resultados correctos. Si se cancela o se supera el límite total, no se descarga un ZIP parcial; las ediciones se conservan para volver a intentarlo con una selección menor.
+- La sesión no es un archivo de proyecto ni se guarda en el servidor o en almacenamiento local: **al recargar o salir se pierde la edición no descargada**. El navegador solicita confirmación al salir si existen fotos editadas o una operación en curso. Los presets del módulo de marcas por lote siguen guardándose aparte en el navegador.
 
 ## Textos, formas y capas
 
@@ -92,7 +110,7 @@ npm test
 
 Requiere Python 3 disponible como `python3` (o la variable `PYTHON` apuntando a su ejecutable) para validar el ZIP con la biblioteca estándar `zipfile`. No requiere `npm install`.
 
-Comprueba geometría proporcional, anclajes, presets, nombres únicos, cancelación y un ZIP de 50 entradas. También verifica orden de capas, texto multilínea, nodos de tamaño, conservación del anclaje con rotación y archivos/licencias de todas las fuentes locales. La CI ejecuta estas pruebas junto con las del backend.
+Comprueba geometría proporcional, anclajes, presets, nombres únicos, cancelación y un ZIP de 50 entradas. También verifica orden de capas, texto multilínea, nodos de tamaño, conservación del anclaje con rotación, archivos/licencias de las fuentes y aislamiento de estados/historiales y selección de exportación entre documentos. La CI ejecuta estas pruebas junto con las del backend.
 
 ## Arquitectura
 
@@ -112,13 +130,15 @@ FotoLab_Studio_Dokploy/
 ├── requirements.txt
 ├── package.json                  # Pruebas JavaScript sin dependencias npm
 ├── templates/
-│   ├── index.html                # Editor individual, textos, formas y capas
+│   ├── index.html                # Editor de múltiples imágenes, textos y capas
 │   └── batch.html                # Marcas de agua por lotes
 ├── static/
-│   ├── css/                      # styles.css, elements.css y batch.css
+│   ├── css/                      # styles.css, elements.css, session.css y batch.css
 │   ├── fonts/                    # Ocho familias locales, estilos y licencias OFL
 │   └── js/
 │       ├── editor.js             # Edición, selección, nodos e historial
+│       ├── editor-renderer.js     # Renderizado compartido: vista previa, miniaturas y exportación
+│       ├── session-core.js       # Documentos, estados independientes y selección para ZIP
 │       ├── elements-core.js      # Dibujo, orden y geometría de elementos
 │       ├── batch.js              # Interfaz y procesamiento secuencial del lote
 │       ├── batch-core.js         # Colocación proporcional de la marca
@@ -160,6 +180,17 @@ Los grafos de Graphify, dependencias locales, cobertura e informes de navegador 
 4. Arrastrar nodos laterales y esquinas con distintos niveles de zoom y rotación; probar Mayús, Esc, ratón y táctil.
 5. Recortar, redimensionar y exportar a PNG/JPG/WebP. Verificar que los textos y formas aparecen sin nodos, cursor ni controles de edición.
 6. Abrir `/lotes` y comprobar la carga del logo, los presets y la exportación de varias fotografías.
+7. Abrir varias fotos en el editor, modificar cada una y alternar entre ellas. Comprobar historial independiente, cierre de fotos, cancelación de carga/cambio y exportación ZIP de una selección (incluidos nombres repetidos), manteniendo la activa.
+
+### Grafo local del proyecto
+
+Con Graphify instalado, actualiza el mapa de código después de integrar los cambios:
+
+```bash
+graphify update .
+```
+
+La actualización de código es local, sin llamadas a una API de IA. Genera `graphify-out/graph.json`, el visor `graphify-out/graph.html` y `graphify-out/GRAPH_REPORT.md`. La carpeta queda excluida de Git y del contexto Docker. Las conexiones del grafo son una ayuda de navegación; su cobertura depende de los formatos y símbolos admitidos por el extractor y no sustituye las pruebas.
 
 ## Notas importantes
 
